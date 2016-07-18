@@ -1,24 +1,15 @@
 #define MODE_Receiver
 //#define MODE_Transmitter
 
-/*1.3_Write_by_ImaSoft_02.07.16
+/*1.4_Write_by_ImaSoft_03.07.16
  * Воскресенье - v1.0 от 22.11.15, Начало_проекта_написания_фунции_передачи_данных_с_клиенской_части_на_сервер_для_модема_SI4432
  * Понедельник - v1.1 от 23.11.15, Обновил_модуль_библиотеки_на_RF22_SI4432-1.40_изменил_формулу_вывода_данных_уровня_сигнала_RSSI
  * Пятница     - v1.2 от 27.11.15, Ввел_переменную_максимального_значения_мощьности_передатчика
  * Субота      - v1.3 от 02.07.16, По просьбе пользователя с Youtube "da da", добавил в приемник и передатчик индификатор, устройства, так-же добавил в буфер передачи, передачу одного значения LONG
+ * Воскресенье - v1.4 от 03.07.16, Перевод кода, в библиотеку!
  * -----------------------------------------------------------------------------------------------------------
- * rf22_client.ino
- * -*- mode: C++ -*-
- * Example sketch showing how to create a simple messageing client
- * with the RH_RF22 class. RH_RF22 class does not provide for addressing or
- * reliability, so you should only use RH_RF22 if you do not need the higher
- * level messaging abilities.
- * It is designed to work with the other example rf22_server
- * Tested on Duemilanove, Uno with Sparkfun RFM22 wireless shield
- * Tested on Flymaple with sparkfun RFM22 wireless shield
- * Tested on ChiKit Uno32 with sparkfun RFM22 wireless shield
-*/
 
+ 
 /* Таблица_переменных_выходной_мощьности_передатчика
  * RF22_TXPOW_1DBM
  * RF22_TXPOW_2DBM
@@ -76,7 +67,8 @@ RF22 RF22_Si4432;                                                //
 #define RF_TIME_OUT           500                                //Время_ожидания_приема_данных_в_милисекундах
 byte PACAGE_LOOP_TX         = 0x03;                              //Количество_повторений_пакета_TX_в_случае_неудачной_передачи_данных
 float OperatingFreq         = 434.17;                            //Рабочая_частота_передатчика_в_мГц_на_LPD-45канал
-boolean FLERRInitRHRF22     = false;                             //Флаг_ошибки_инициализации_драйвера_RH_RF22_модуля_SI4432
+boolean FLERRInitRHRF22     = true;                              //Флаг_ошибки_инициализации_драйвера_RH_RF22_модуля_SI4432
+RF22::ModemConfigChoice Modulations = RF22_Si4432.OOK_Rb2_4Bw335;// 
 //-------------------------------------------------------------- //
 
 /*
@@ -161,12 +153,6 @@ byte DataReadSI4432(uint8_t* buf, uint8_t len, byte ID, byte RFTIMEOUT) {
          RF22_Si4432.send(buf, (buf[0]+2));                      //
          RF22_Si4432.waitPacketSent();                           //
          //----------------------------------------------------- //
-         #ifdef Debug_RF-DATA                                    //
-         Serial.print("RSSI: ");Serial.println((int8_t)(-120 + (RF22_Si4432.lastRssi()/2)), DEC);
-         Serial.println("Sent a Reply");                         //
-         Serial.print("");                                       //
-         #endif                                                  //
-         //----------------------------------------------------- //
          //digitalWrite(LedPin,LOW);                             //
          return 1;                                               //
         }                                                        //
@@ -189,12 +175,12 @@ byte DataReadSI4432(uint8_t* buf, uint8_t len, byte ID, byte RFTIMEOUT) {
 
 
 //***START_RF22Si4432init*************************************** //
-void RF22Si4432init() {                                          //
+void Si4432_init(float OperatingFreq, RF22::ModemConfigChoice TableOFmodulations, byte TXPOW) {
   if (RF22_Si4432.init()) {                                      //
     FLERRInitRHRF22 = false;                                     //Флаг_ошибки_инициализации_модуля_SI4432
     RF22_Si4432.setFrequency(OperatingFreq, 0.1);                //
-    RF22_Si4432.setModemConfig(RF22_Si4432.OOK_Rb2_4Bw335);      //
-    RF22_Si4432.setTxPower(RF22_TXPOW_MAXDBM);                   //
+    RF22_Si4432.setModemConfig(TableOFmodulations);              //
+    RF22_Si4432.setTxPower(RF22_TXPOW);                          //
     #ifdef Debug_RF-DATA                                         //
     Serial.print("RH_RF22:");Serial.println(" Init-OK");         //
     Serial.println("");                                          //
@@ -213,16 +199,12 @@ void RF22Si4432init() {                                          //
 
 
 
-
 //***START_Setup************************************************ //
 void setup() {                                                   //
   //------------------------------------------------------------ // 
   #ifdef Debug_Serial                                            //
   Serial.begin(9600);                                            //
   #endif                                                         //
-  //------------------------------------------------------------ //   
-  // Defaults after init are 434.0MHz, 0.05MHz AFC pull-in, modulation FSK_Rb2_4Fd36
-  RF22Si4432init();                                              //
   //------------------------------------------------------------ //
 }                                                                //
 //***END_Setup************************************************** //
@@ -253,7 +235,7 @@ void loop() {                                                    //
    * 3 - Ошибка_инициализации_модуля_SI4432                      //
    */                                                            //
   byte FLError = DataSendSI4432(buf, sizeof(buf), OperatingFreq, RF22_TXPOW_MAXDBM, PACAGE_LOOP_TX, RF_TIME_OUT);
-  if (FLError == 3) {delay(3000);RF22Si4432init();}              //
+  if (FLError == 3) {delay(3000);RF22Si4432_init(OperatingFreq, Modulations, RF22_TXPOW_MAXDBM);}
   //------------------------------------------------------------ //
   
   //------------------------------------------------------------ //
@@ -287,12 +269,12 @@ void loop() {                                                    //
     char Str[buf[0]];for(byte i =0; i<=(buf[0]-1); i++) Str[i] = buf[i+1+1+4];
     byte x[4];for(byte i = 0; i < 4; i++) x[i] = buf[i+2];long *RFData = (long *)&x;
     #ifdef Debug_RF-DATA                                         //
+    Serial.print("RSSI: ");Serial.println((int8_t)(-120 + (RF22_Si4432.lastRssi()/2)), DEC);
     Serial.print("got request: ");Serial.print(Str);Serial.print("; String Len:");Serial.print(sizeof(Str));Serial.print("; RFData: ");Serial.print((RFData[0]/1000), DEC);Serial.println("S");
     Serial.println("");                                          //
     #endif                                                       //
     delay(10);                                                   //
-  }                                                              //
-  if (FLError == 3) {delay(3000);RF22Si4432init();}              //
+  } else {if (FLError == 3) {delay(3000);Si4432_init(OperatingFreq, Modulations, RF22_TXPOW_MAXDBM);}}
  //------------------------------------------------------------- //
  
  //------------------------------------------------------------- //
